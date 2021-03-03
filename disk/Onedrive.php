@@ -17,12 +17,12 @@ class Onedrive {
         $this->oauth_url = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
         $this->api_url = 'https://graph.microsoft.com/v1.0';
         $this->scope = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
-        $res = $this->get_access_token(getConfig('refresh_token', $tag));
 
         $this->client_secret = urlencode($this->client_secret);
         $this->scope = urlencode($this->scope);
         $this->DownurlStrName = '@microsoft.graph.downloadUrl';
         $this->ext_api_url = '/me/drive/root';
+        $res = $this->get_access_token(getConfig('refresh_token', $tag));
     }
 
     public function isfine()
@@ -446,7 +446,7 @@ class Onedrive {
                     return message($html, $title, 201);
                 }
                 $response = $this->get_access_token($refresh_token);
-                if (isset($response['stat'])) return message($response['body'], 'Error', $response['stat']);
+                if (!$response) return message($this->error['body'], 'Error', $this->error['stat']);
             }
 
             $tmp = null;
@@ -516,7 +516,7 @@ class Onedrive {
                     return message($html, $title, 201);
                 }
                 $response = $this->get_access_token($refresh_token);
-                if (isset($response['stat'])) return message($response['body'], 'Error', $response['stat']);
+                if (!$response) return message($this->error['body'], 'Error', $this->error['stat']);
             }
 
             $api = $this->api_url . '/sites/root';
@@ -767,6 +767,12 @@ class Onedrive {
     }
 
     protected function get_access_token($refresh_token) {
+        if (!$refresh_token) {
+            $tmp['stat'] = 0;
+            $tmp['body'] = 'No refresh_token';
+            $this->error = $tmp;
+            return false;
+        }
         if (!($this->access_token = getcache('access_token', $this->disktag))) {
             $p=0;
             while ($response['stat']==0&&$p<3) {
@@ -776,15 +782,16 @@ class Onedrive {
             if ($response['stat']==200) $ret = json_decode($response['body'], true);
             if (!isset($ret['access_token'])) {
                 error_log1($this->oauth_url . 'token' . '?client_id=' . $this->client_id . '&client_secret=' . $this->client_secret . '&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . substr($refresh_token, 0, 20) . '******' . substr($refresh_token, -20));
-                error_log1('failed to get [' . $this->disktag . '] access_token. response' . json_encode($ret));
+                error_log1('failed to get [' . $this->disktag . '] access_token. response: ' . $response['body']);
                 $response['body'] = json_encode(json_decode($response['body']), JSON_PRETTY_PRINT);
                 $response['body'] .= '\nfailed to get [' . $this->disktag . '] access_token.';
-                return $response;
+                $this->error = $response;
+                return false;
                 //throw new Exception($response['stat'].', failed to get ['.$this->disktag.'] access_token.'.$response['body']);
             }
             $tmp = $ret;
-            $tmp['access_token'] = '******';
-            $tmp['refresh_token'] = '******';
+            $tmp['access_token'] = substr($tmp['access_token'], 0, 10) . '******';
+            $tmp['refresh_token'] = substr($tmp['refresh_token'], 0, 10) . '******';
             error_log1('[' . $this->disktag . '] Get access token:' . json_encode($tmp, JSON_PRETTY_PRINT));
             $this->access_token = $ret['access_token'];
             savecache('access_token', $this->access_token, $this->disktag, $ret['expires_in'] - 300);
